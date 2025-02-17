@@ -139,13 +139,9 @@ let main args =
             Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
 
         // Offset
-        // if Raylib.IsKeyDown KeyboardKey.Left |> CBool.op_Implicit then offset <- offset + Vector2(-deltaTime, 0f) / zoom
-        // if Raylib.IsKeyDown KeyboardKey.Up |> CBool.op_Implicit then offset <- offset + Vector2(0f, deltaTime) / zoom
-        // if Raylib.IsKeyDown KeyboardKey.Right |> CBool.op_Implicit then offset <- offset + Vector2(deltaTime, 0f) / zoom
-        // if Raylib.IsKeyDown KeyboardKey.Down |> CBool.op_Implicit then offset <- offset + Vector2(0f, -deltaTime) / zoom
         if Raylib.IsMouseButtonDown MouseButton.Left |> CBool.op_Implicit then
             let mouseDelta = Raylib.GetMouseDelta()
-            offset <- offset - mouseDelta * Vector2(1f, -1f) / (screenDims * zoom)
+            offset <- offset - mouseDelta / Vector2(screenDims.Y, -screenDims.Y) / zoom
 
         Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
 
