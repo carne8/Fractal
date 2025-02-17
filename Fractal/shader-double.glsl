@@ -12,6 +12,7 @@ uniform vec2 screenDims; // Dimensions of the screen
 uniform vec3 palette[7];
 uniform float zoom;
 uniform vec2 offset;
+uniform vec2 c;
 
 const int MAX_ITERATIONS = 255; // Max iterations to do.
 const int COLOR_CYCLES = 6;
@@ -38,24 +39,21 @@ vec3 colorize(vec2 z, int i) {
 }
 
 // Julia loop using complex DD arithmetic.
-vec3 julia(dvec2 c) {
-    dvec2 z = c;
-    const dvec2 v = dvec2(-0.8, 0.156);
-
+vec3 julia(dvec2 z) {
     for (int i = 0; i < MAX_ITERATIONS; i++)
     {
-        z = ComplexSquare(z) + v;
+        z = ComplexSquare(z) + c;
         if (z.x*z.x + z.y*z.y >= 4.0)
         {
             return colorize(vec2(z), i);
         }
     }
-    return colorize(vec2(z), MAX_ITERATIONS);
+    return colorize(vec2(z), MAX_ITERATIONS-1);
 }
 
 // Main shader function.
 void main() {
-    vec2 uv = 2*vec2(fragTexCoord.xy) - 1;
+    vec2 uv = 2*fragTexCoord.xy - 1;
 
     const float screenRatio = screenDims.x / screenDims.y;
     uv.x *= screenRatio;

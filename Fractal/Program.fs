@@ -12,6 +12,7 @@ type Uniform =
     | Offset
     | C
     | ScreenDimensions
+    | UseDouble
 
     override this.ToString() =
         match this with
@@ -21,6 +22,8 @@ type Uniform =
         | Offset -> "offset"
         | C  -> "c"
         | ScreenDimensions -> "screenDims"
+        | UseDouble -> "useDouble"
+
 
 module Palettes =
     let basePalette =
@@ -51,19 +54,19 @@ module Palettes =
 let main args =
     // Initialization
     //--------------------------------------------------------------------------------------
-    let screenWidth = 400
-    let screenHeight = 450
+    let initialWidth = 400
+    let initialHeight = 450
 
     Raylib.SetConfigFlags (ConfigFlags.Msaa4xHint ||| ConfigFlags.ResizableWindow) // Enable Multi Sampling Anti Aliasing 4x (if available)
-    Raylib.InitWindow(screenWidth, screenHeight, "raylib [shaders] example - julia sets")
+    Raylib.InitWindow(initialWidth, initialHeight, "raylib [shaders] example - julia sets")
 
-    // Load shader
+    // Load shaders
     let shaderPath = Path.Combine(__SOURCE_DIRECTORY__, "shader.glsl")
     let shaderCode = File.ReadAllText shaderPath
     let shader = Raylib.LoadShaderFromMemory(null, shaderCode) // NOTE: Defining 0 (NULL) for vertex shader forces usage of internal default vertex shader
 
     // Create a RenderTexture2D to be used for render to texture
-    let target = Raylib.LoadRenderTexture(screenWidth, screenHeight)
+    let mutable target = Raylib.LoadRenderTexture(initialWidth, initialHeight)
 
     // Set uniforms
     // -------------------------------------------------------------------------------------
@@ -73,28 +76,35 @@ let main args =
     let zoomLoc = Raylib.GetShaderLocation(shader, Uniform.Zoom |> string)
     let offsetLoc = Raylib.GetShaderLocation(shader, Uniform.Offset |> string)
     let cLoc = Raylib.GetShaderLocation(shader, Uniform.C |> string)
+    let useDoubleLoc = Raylib.GetShaderLocation(shader, Uniform.UseDouble |> string)
 
-    let screenDims = Vector2(float32 screenWidth, float32 screenHeight)
+    Raylib.SetShaderValueV(shader, paletteLoc, Palettes.basePalette, ShaderUniformDataType.Vec3, Palettes.basePalette.Length)
+    Raylib.SetShaderValue(shader, iTimeLoc, 0f, ShaderUniformDataType.Float)
+
+    let mutable screenDims = Vector2(float32 initialWidth, float32 initialHeight)
+    let mutable zoom = 1f
+    let mutable offset = Vector2.Zero
+    let mutable c = Vector2(-0.8f, 0.156f)
+
     Raylib.SetShaderValue(
         shader,
         screenDimsLoc,
         screenDims,
         ShaderUniformDataType.Vec2
     )
-
-    Raylib.SetShaderValueV(shader, paletteLoc, Palettes.basePalette, ShaderUniformDataType.Vec3, Palettes.basePalette.Length)
-    Raylib.SetShaderValue(shader, iTimeLoc, 0f, ShaderUniformDataType.Float)
-
-    let mutable zoom = 1f
-    let mutable offset = Vector2.Zero
-    let mutable c = Vector2(-0.8f, 0.156f)
-
     Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
     Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
     Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+    Raylib.SetShaderValue(shader, useDoubleLoc, 0, ShaderUniformDataType.Int)
 
-    Raylib.SetTargetFPS 120
     // -------------------------------------------------------------------------------------
+    Raylib.SetTargetFPS 120
+
+    let mutable shouldDraw = true
+
+    // Gamepad dead zones
+    let stickDeadZone = 0.1f
+    let triggerDeadZone = -0.9f
 
     // Main game loop
     while not <| Raylib.WindowShouldClose() do
@@ -104,17 +114,27 @@ let main args =
         let time = float32 <| Raylib.GetTime()
         Raylib.SetShaderValue(shader, iTimeLoc, time, ShaderUniformDataType.Float)
 
-        // Window size
+        // Window resize
         let width = Raylib.GetScreenWidth()
         let height = Raylib.GetScreenHeight()
-        let screenDims = Vector2(float32 width, float32 height)
-
-        target.Texture.Width <- width
-        target.Texture.Height <- height
-        Raylib.SetShaderValue(shader, screenDimsLoc, screenDims, ShaderUniformDataType.Vec2)
+        if screenDims.X <> float32 width || screenDims.Y <> float32 height then
+            target <- Raylib.LoadRenderTexture(width, height)
+            screenDims <- Vector2(float32 width, float32 height)
+            Raylib.SetShaderValue(shader, screenDimsLoc, screenDims, ShaderUniformDataType.Vec2)
 
         let deltaTime = Raylib.GetFrameTime()
-        // Zoom
+
+        // ---- Zoom ----
+        // Gamepad
+        if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
+            let leftTrigger = Raylib.GetGamepadAxisMovement(0, GamepadAxis.LeftTrigger)
+            let rightTrigger = Raylib.GetGamepadAxisMovement(0, GamepadAxis.RightTrigger)
+
+            if leftTrigger > triggerDeadZone then zoom <- zoom * exp (-0.05f * (leftTrigger + 1f))
+            if rightTrigger > triggerDeadZone then zoom <- zoom * exp (0.05f * (rightTrigger + 1f))
+            Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
+
+        // Mouse
         let toWorldCoordinates zoomLevel (vec: Vector2) = // Same as what is in shader code
             let normalized = vec / screenDims // Map to 0-1 and reverse Y axis
             let normCentered = 2f * normalized - Vector2 1f
@@ -135,48 +155,85 @@ let main args =
             let beforeMouseWorldPos = screenMousePos |> toWorldCoordinates oldZoom
             let afterMouseWorldPos = screenMousePos |> toWorldCoordinates zoom
 
-            offset <- offset + (beforeMouseWorldPos - afterMouseWorldPos) / 2f
+            offset <- offset + (beforeMouseWorldPos - afterMouseWorldPos) / 4f
             Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
 
-        // Offset
+        // ---- Offset ----
+        if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
+            let leftStick = Vector2(
+                Raylib.GetGamepadAxisMovement(0, GamepadAxis.LeftX),
+                -Raylib.GetGamepadAxisMovement(0, GamepadAxis.LeftY)
+            )
+
+            if leftStick.Length() > stickDeadZone then
+                offset <- offset + deltaTime * 0.7f * leftStick / zoom
+
         if Raylib.IsMouseButtonDown MouseButton.Left |> CBool.op_Implicit then
             let mouseDelta = Raylib.GetMouseDelta()
             offset <- offset - mouseDelta / Vector2(screenDims.Y, -screenDims.Y) / zoom
 
         Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
 
-        // C
+        // ---- C ----
+        if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
+            let rightStick = Vector2(
+                Raylib.GetGamepadAxisMovement(0, GamepadAxis.RightX),
+                Raylib.GetGamepadAxisMovement(0, GamepadAxis.RightY)
+            )
+
+            if rightStick.Length() > stickDeadZone then
+                c <- c + deltaTime * 0.006f * rightStick
+
         if Raylib.IsKeyDown KeyboardKey.KpAdd |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Equal |> CBool.op_Implicit then
             c <- c + Vector2(0f, 0.0001f) * deltaTime
         if Raylib.IsKeyDown KeyboardKey.KpSubtract |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Minus |> CBool.op_Implicit then
             c <- c - Vector2(0f, 0.0001f) * deltaTime
 
         Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+
+        // ---- Use double (high-precision) ----
+        let highPrecisionEnabled: bool =
+            Raylib.IsKeyDown KeyboardKey.Q |> CBool.op_Implicit
+            ||
+            (Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit
+             && Raylib.IsGamepadButtonDown(0, GamepadButton.RightFaceDown))
+        let useDouble =
+            match highPrecisionEnabled with
+            | true -> 1
+            | false -> 0
+        Raylib.SetShaderValue(shader, useDoubleLoc, useDouble, ShaderUniformDataType.Int)
         // -------------------------------------------------------------------------------------
 
 
         // Draw
         //----------------------------------------------------------------------------------
+        if not highPrecisionEnabled && not shouldDraw then
+            shouldDraw <- true
+
         Raylib.BeginDrawing()
         Raylib.ClearBackground Color.Black
 
-        // Using a render texture to draw fractal
-        // Enable drawing to texture
-        Raylib.BeginTextureMode target
-        Raylib.ClearBackground Color.Black
+        if shouldDraw then
+            // Using a render texture to draw fractal
+            Raylib.BeginTextureMode target
+            Raylib.ClearBackground Color.Black
 
-        // Draw a rectangle in shader mode to be used as shader canvas
-        // NOTE: Rectangle uses font Color.white character texture coordinates,
-        // so shader can not be applied here directly because input vertexTexCoord
-        // do not represent full screen coordinates (space where want to apply shader)
-        Raylib.DrawRectangle(0, 0, height, width, Color.Black)
-        Raylib.EndTextureMode()
+            // Draw using shader
+            Raylib.BeginShaderMode shader// Proper way to pass UVs correctly
+            let sourceRect = Rectangle(0f, 0f, float32 width, -float32 height) // Flip Y
+            Raylib.DrawTextureRec(target.Texture, sourceRect, Vector2.Zero, Color.White)
+            Raylib.EndShaderMode()
 
-        // Draw the saved texture and rendered fractal with shader
-        // NOTE: We do not invert texture on Y, already considered inside shader
-        Raylib.BeginShaderMode shader
+            Raylib.EndTextureMode()
+        if highPrecisionEnabled then
+            shouldDraw <- false
+
         Raylib.DrawTexture(target.Texture, 0, 0, Color.White)
-        Raylib.EndShaderMode()
+
+        let fontSize = 20
+        Raylib.DrawText(sprintf "Zoom: %f" zoom, 10, 10, fontSize, Color.White)
+        Raylib.DrawText(sprintf "Offset: %A" offset, 10, 10 + (fontSize + 2) * 1, fontSize, Color.White)
+        Raylib.DrawText(sprintf "C: %A" c, 10, 10 + (fontSize + 2) * 2, fontSize, Color.White)
 
         Raylib.EndDrawing()
         //----------------------------------------------------------------------------------

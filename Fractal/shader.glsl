@@ -13,14 +13,22 @@ uniform vec3 palette[7];
 uniform float zoom;
 uniform vec2 offset;
 uniform vec2 c;
+uniform int useDouble;
 
 const int MAX_ITERATIONS = 255; // Max iterations to do.
 const int COLOR_CYCLES = 6;
 
 // Square a complex number
-vec2 ComplexSquare(vec2 z)
+vec2 complex_square(vec2 z)
 {
     return vec2(
+    z.x * z.x - z.y * z.y,
+    z.x * z.y * 2.0
+    );
+}
+dvec2 complex_square_double(dvec2 z)
+{
+    return dvec2(
     z.x * z.x - z.y * z.y,
     z.x * z.y * 2.0
     );
@@ -42,32 +50,60 @@ vec3 colorize(vec2 z, int i) {
 vec3 julia(vec2 z) {
     for (int i = 0; i < MAX_ITERATIONS; i++)
     {
-        z = ComplexSquare(z) + c;
+        z = complex_square(z) + c;
         if (z.x*z.x + z.y*z.y >= 4.0)
         {
             return colorize(z, i);
         }
     }
-    return colorize(z, MAX_ITERATIONS-1);
+    return colorize(z, MAX_ITERATIONS);
+}
+
+// Julia loop using complex DD arithmetic.
+vec3 julia_double(dvec2 z) {
+    for (int i = 0; i < MAX_ITERATIONS; i++)
+    {
+        z = complex_square_double(z) + c;
+        if (z.x*z.x + z.y*z.y >= 4.0)
+        {
+            return colorize(vec2(z), i);
+        }
+    }
+    return colorize(vec2(z), MAX_ITERATIONS-1);
 }
 
 // Main shader function.
 void main() {
-    vec2 uv = 2*vec2(fragTexCoord.xy) - 1;
+    vec2 uv = 2*fragTexCoord.xy - 1;
 
     const float screenRatio = screenDims.x / screenDims.y;
     uv.x *= screenRatio;
     uv.y *= -1;
 
-    uv /= zoom;
-    uv += offset * 2;
+    if (useDouble == 1) {
+        dvec2 uv_d = dvec2(uv);
+        uv_d /= zoom;
+        uv_d += offset * 2;
 
-    // Initialize complex DD numbers:
-    vec2 c = uv; // c from pixel coordinate
+        // Initialize complex DD numbers:
+        dvec2 c = uv_d; // c from pixel coordinate
 
-    // Iteration loop.
-    vec3 color = julia(c);
+        // Iteration loop.
+        vec3 color = julia_double(c);
 
-    // Return grayscale color based on the iteration ratio.
-    finalColor = vec4(color, 1.0);
+        // Return grayscale color based on the iteration ratio.
+        finalColor = vec4(color, 1.0);
+    } else {
+        uv /= zoom;
+        uv += offset * 2;
+
+        // Initialize complex DD numbers:
+        vec2 c = uv; // c from pixel coordinate
+
+        // Iteration loop.
+        vec3 color = julia(c);
+
+        // Return grayscale color based on the iteration ratio.
+        finalColor = vec4(color, 1.0);
+    }
 }
