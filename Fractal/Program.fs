@@ -50,6 +50,9 @@ module Palettes =
            Vector3(0f, 0f, 1f)      // Blue
            Vector3(1f, 1f, 1f)      (* White *) |]
 
+module CBool =
+    let toBool (cBool: CBool) : bool = cBool
+
 [<EntryPoint>]
 let main args =
     // Initialization
@@ -121,6 +124,7 @@ let main args =
             target <- Raylib.LoadRenderTexture(width, height)
             screenDims <- Vector2(float32 width, float32 height)
             Raylib.SetShaderValue(shader, screenDimsLoc, screenDims, ShaderUniformDataType.Vec2)
+            shouldDraw <- true
 
         let deltaTime = Raylib.GetFrameTime()
 
@@ -130,8 +134,12 @@ let main args =
             let leftTrigger = Raylib.GetGamepadAxisMovement(0, GamepadAxis.LeftTrigger)
             let rightTrigger = Raylib.GetGamepadAxisMovement(0, GamepadAxis.RightTrigger)
 
-            if leftTrigger > triggerDeadZone then zoom <- zoom * exp (-0.05f * (leftTrigger + 1f))
-            if rightTrigger > triggerDeadZone then zoom <- zoom * exp (0.05f * (rightTrigger + 1f))
+            if leftTrigger > triggerDeadZone then
+                zoom <- zoom * exp (-0.05f * (leftTrigger + 1f))
+                shouldDraw <- true
+            if rightTrigger > triggerDeadZone then
+                zoom <- zoom * exp (0.05f * (rightTrigger + 1f))
+                shouldDraw <- true
             Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
 
         // Mouse
@@ -155,8 +163,10 @@ let main args =
             let beforeMouseWorldPos = screenMousePos |> toWorldCoordinates oldZoom
             let afterMouseWorldPos = screenMousePos |> toWorldCoordinates zoom
 
-            offset <- offset + (beforeMouseWorldPos - afterMouseWorldPos) / 4f
+            offset <- offset + (beforeMouseWorldPos - afterMouseWorldPos) / 2f
             Raylib.SetShaderValue(shader, zoomLoc, zoom, ShaderUniformDataType.Float)
+            Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
+            shouldDraw <- true
 
         // ---- Offset ----
         if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
@@ -167,12 +177,14 @@ let main args =
 
             if leftStick.Length() > stickDeadZone then
                 offset <- offset + deltaTime * 0.7f * leftStick / zoom
+                shouldDraw <- true
+                Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
 
         if Raylib.IsMouseButtonDown MouseButton.Left |> CBool.op_Implicit then
             let mouseDelta = Raylib.GetMouseDelta()
             offset <- offset - mouseDelta / Vector2(screenDims.Y, -screenDims.Y) / zoom
-
-        Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
 
         // ---- C ----
         if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
@@ -182,34 +194,48 @@ let main args =
             )
 
             if rightStick.Length() > stickDeadZone then
-                c <- c + deltaTime * 0.006f * rightStick
+                c <- c + deltaTime * 0.006f * rightStick / zoom
+                shouldDraw <- true
+                Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 
         if Raylib.IsKeyDown KeyboardKey.KpAdd |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Equal |> CBool.op_Implicit then
-            c <- c + Vector2(0f, 0.0001f) * deltaTime
+            c <- c + Vector2(0f, 0.1f) * deltaTime / zoom
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
         if Raylib.IsKeyDown KeyboardKey.KpSubtract |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Minus |> CBool.op_Implicit then
-            c <- c - Vector2(0f, 0.0001f) * deltaTime
-
-        Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+            c <- c - Vector2(0f, 0.1f) * deltaTime / zoom
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 
         // ---- Use double (high-precision) ----
-        let highPrecisionEnabled: bool =
-            Raylib.IsKeyDown KeyboardKey.Q |> CBool.op_Implicit
-            ||
-            (Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit
-             && Raylib.IsGamepadButtonDown(0, GamepadButton.RightFaceDown))
-        let useDouble =
-            match highPrecisionEnabled with
-            | true -> 1
-            | false -> 0
-        Raylib.SetShaderValue(shader, useDoubleLoc, useDouble, ShaderUniformDataType.Int)
+        // Keyboard
+        match Raylib.IsKeyPressed KeyboardKey.Q |> CBool.toBool,
+              Raylib.IsKeyReleased KeyboardKey.Q |> CBool.toBool with
+        | true, false -> // Pressed
+            printfn "Activating"
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, useDoubleLoc, 1, ShaderUniformDataType.Int) // Activate
+        | false, true -> // Released
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, useDoubleLoc, 0, ShaderUniformDataType.Int) // Deactivate
+        | _ -> ()
+
+        // Gamepad
+        if Raylib.IsGamepadAvailable 0 |> CBool.toBool then
+            match Raylib.IsGamepadButtonPressed(0, GamepadButton.RightFaceDown) |> CBool.toBool,
+                  Raylib.IsGamepadButtonReleased(0, GamepadButton.RightFaceDown) |> CBool.toBool with
+            | true, false -> // Pressed
+                shouldDraw <- true
+                Raylib.SetShaderValue(shader, useDoubleLoc, 1, ShaderUniformDataType.Int) // Activate
+            | false, true -> // Released
+                shouldDraw <- true
+                Raylib.SetShaderValue(shader, useDoubleLoc, 0, ShaderUniformDataType.Int) // Deactivate
+            | _ -> ()
         // -------------------------------------------------------------------------------------
 
 
         // Draw
         //----------------------------------------------------------------------------------
-        if not highPrecisionEnabled && not shouldDraw then
-            shouldDraw <- true
-
         Raylib.BeginDrawing()
         Raylib.ClearBackground Color.Black
 
@@ -225,7 +251,6 @@ let main args =
             Raylib.EndShaderMode()
 
             Raylib.EndTextureMode()
-        if highPrecisionEnabled then
             shouldDraw <- false
 
         Raylib.DrawTexture(target.Texture, 0, 0, Color.White)
