@@ -189,6 +189,7 @@ let main args =
             Raylib.SetShaderValue(shader, offsetLoc, offset, ShaderUniformDataType.Vec2)
 
         // ---- C ----
+        // Gamepad
         if Raylib.IsGamepadAvailable 0 |> CBool.op_Implicit then
             let rightStick = Vector2(
                 Raylib.GetGamepadAxisMovement(0, GamepadAxis.RightX),
@@ -200,6 +201,7 @@ let main args =
                 shouldDraw <- true
                 Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 
+        // Keyboard
         if Raylib.IsKeyDown KeyboardKey.D |> CBool.op_Implicit then
             c <- c + Vector2(0f, 0.1f) * deltaTime / zoom
             shouldDraw <- true
@@ -218,12 +220,20 @@ let main args =
             shouldDraw <- true
             Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 
+        if Raylib.IsKeyDown KeyboardKey.Nine |> CBool.op_Implicit then
+            c <- Vector2(c.X, 0f)
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+        if Raylib.IsKeyDown KeyboardKey.Zero |> CBool.op_Implicit then
+            c <- Vector2(0f, c.Y)
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+
         // ---- Use double (high-precision) ----
         // Keyboard
         match Raylib.IsKeyPressed KeyboardKey.Q |> CBool.toBool,
               Raylib.IsKeyReleased KeyboardKey.Q |> CBool.toBool with
         | true, false -> // Pressed
-            printfn "Activating"
             shouldDraw <- true
             Raylib.SetShaderValue(shader, useDoubleLoc, 1, ShaderUniformDataType.Int) // Activate
         | false, true -> // Released
@@ -267,9 +277,17 @@ let main args =
         Raylib.DrawTexture(target.Texture, 0, 0, Color.White)
 
         let fontSize = 20
-        Raylib.DrawText(sprintf "Zoom: %f" zoom, 10, 10, fontSize, Color.White)
-        Raylib.DrawText(sprintf "Offset: %A" offset, 10, 10 + (fontSize + 2) * 1, fontSize, Color.White)
-        Raylib.DrawText(sprintf "C: %A" c, 10, 10 + (fontSize + 2) * 2, fontSize, Color.White)
+        Raylib.DrawText($"Zoom: {zoom}", 10, 10, fontSize, Color.White)
+
+        // Display Offset
+        Raylib.DrawText("Offset:", 10, 10 + (fontSize + 2) * 1, fontSize, Color.White)
+        Raylib.DrawText($"X: {offset.X}", 90, 10 + (fontSize + 2) * 1, fontSize, Color.White)
+        Raylib.DrawText($"Y: {offset.Y}", 90, 10 + (fontSize + 2) * 2, fontSize, Color.White)
+
+        // Display C
+        Raylib.DrawText("C:", 10, 10 + (fontSize + 2) * 3, fontSize, Color.White)
+        Raylib.DrawText($"Re: {c.X}", 35, 10 + (fontSize + 2) * 3, fontSize, Color.White)
+        Raylib.DrawText($"Im: {c.Y}", 35, 10 + (fontSize + 2) * 4, fontSize, Color.White)
 
         Raylib.EndDrawing()
         //----------------------------------------------------------------------------------
