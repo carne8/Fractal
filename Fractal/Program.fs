@@ -1,4 +1,5 @@
-﻿open System.IO
+﻿open System
+open System.IO
 open System.Numerics
 open Raylib_cs
 
@@ -64,7 +65,8 @@ let main args =
     Raylib.InitWindow(initialWidth, initialHeight, "raylib [shaders] example - julia sets")
 
     // Load shaders
-    let shaderPath = Path.Combine(__SOURCE_DIRECTORY__, "shader.glsl")
+    let processDir = Environment.ProcessPath |> Path.GetDirectoryName
+    let shaderPath = Path.Combine(processDir, "shader.glsl")
     let shaderCode = File.ReadAllText shaderPath
     let shader = Raylib.LoadShaderFromMemory(null, shaderCode) // NOTE: Defining 0 (NULL) for vertex shader forces usage of internal default vertex shader
 
@@ -198,12 +200,21 @@ let main args =
                 shouldDraw <- true
                 Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 
-        if Raylib.IsKeyDown KeyboardKey.KpAdd |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Equal |> CBool.op_Implicit then
+        if Raylib.IsKeyDown KeyboardKey.D |> CBool.op_Implicit then
             c <- c + Vector2(0f, 0.1f) * deltaTime / zoom
             shouldDraw <- true
             Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
-        if Raylib.IsKeyDown KeyboardKey.KpSubtract |> CBool.op_Implicit || Raylib.IsKeyDown KeyboardKey.Minus |> CBool.op_Implicit then
+        if Raylib.IsKeyDown KeyboardKey.A |> CBool.op_Implicit then
             c <- c - Vector2(0f, 0.1f) * deltaTime / zoom
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+
+        if Raylib.IsKeyDown KeyboardKey.W |> CBool.op_Implicit then
+            c <- c + Vector2(0.1f, 0f) * deltaTime / zoom
+            shouldDraw <- true
+            Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
+        if Raylib.IsKeyDown KeyboardKey.S |> CBool.op_Implicit then
+            c <- c - Vector2(0.1f, 0f) * deltaTime / zoom
             shouldDraw <- true
             Raylib.SetShaderValue(shader, cLoc, c, ShaderUniformDataType.Vec2)
 

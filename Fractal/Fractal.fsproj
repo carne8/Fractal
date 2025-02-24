@@ -14,6 +14,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Content Include="shader.glsl">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Compile Include="Program.fs"/>
     </ItemGroup>
 
