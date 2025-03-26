@@ -258,7 +258,6 @@ let main args =
         // Draw
         //----------------------------------------------------------------------------------
         Raylib.BeginDrawing()
-        Raylib.ClearBackground Color.Black
 
         if shouldDraw then
             // Using a render texture to draw fractal
@@ -266,7 +265,7 @@ let main args =
             Raylib.ClearBackground Color.Black
 
             // Draw using shader
-            Raylib.BeginShaderMode shader// Proper way to pass UVs correctly
+            Raylib.BeginShaderMode shader // Proper way to pass UVs correctly
             let sourceRect = Rectangle(0f, 0f, float32 width, -float32 height) // Flip Y
             Raylib.DrawTextureRec(target.Texture, sourceRect, Vector2.Zero, Color.White)
             Raylib.EndShaderMode()
